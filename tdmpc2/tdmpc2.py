@@ -288,12 +288,12 @@ class TDMPC2:
         obs, action, reward, task = buffer.sample()
 
         # Convert vectorized env data to batched data
-        if obs.dim == 4:
-			obs = obs.flatten(1, 2)
-			action = action.flatten(1, 2)
-			reward = reward.flatten(1, 2)
-			if self.cfg.multitask:
-				task = task.flatten(1, 2)
+        if obs.dim() == 4:
+            obs = obs.flatten(1, 2)
+            action = action.flatten(1, 2)
+            reward = reward.flatten(1, 2)
+            if self.cfg.multitask:
+                task = task.flatten(1, 2)
 
         # Compute targets
         with torch.no_grad():

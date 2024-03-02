@@ -64,6 +64,29 @@ class ActionRepeatWrapper(dm_env.Environment):
         return getattr(self._env, name)
 
 
+class SuccessWrapper(dm_env.Environment):
+    def __init__(self, env):
+        self._env = env
+
+    def step(self, action):
+        obs, act, rew, info = self._env.step(action)
+        info["success"] = info["truncation"].float().mean().item()
+
+        return obs, act, rew, info
+
+    def observation_spec(self):
+        return self._env.observation_spec()
+
+    def action_spec(self):
+        return self._env.action_spec()
+
+    def reset(self):
+        return self._env.reset()
+
+    def __getattr__(self, name):
+        return getattr(self._env, name)
+
+
 class ActionDTypeWrapper(dm_env.Environment):
     def __init__(self, env, dtype):
         self._env = env
@@ -200,4 +223,5 @@ def make_env(cfg):
         raise ValueError("RGB not supported in dflex")
 
     env = instantiate(cfg.env, logdir=cfg.work_dir)
+    env = SuccessWrapper(env)
     return env

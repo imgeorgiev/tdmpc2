@@ -25,6 +25,7 @@ class OnlineTrainer(Trainer):
             total_time=time() - self._start_time,
         )
 
+    @torch.no_grad()
     def eval(self):
         """Evaluate a TD-MPC2 agent."""
         ep_rewards, ep_successes = [], []
@@ -40,12 +41,13 @@ class OnlineTrainer(Trainer):
                 if self.cfg.save_video:
                     self.logger.video.record(self.env)
             ep_rewards.append(ep_reward.cpu().numpy())
-            success = (
-                info["success"]
-                if "success" in info
-                else info["truncation"].float().mean().item()
-            )
-            ep_successes.append(success)
+            # TODO handle success with a wrapper
+            # success = (
+            #     info["success"]
+            #     if "success" in info
+            #     else info["truncation"].float().mean().item()
+            # )
+            ep_successes.append(info["success"])
             if self.cfg.save_video:
                 self.logger.video.save(self._step)
         return dict(
@@ -91,16 +93,16 @@ class OnlineTrainer(Trainer):
                     eval_next = False
 
                 if self._step > 0:
-                    success = (
-                        info["success"]
-                        if "success" in info
-                        else info["truncation"].float().mean().item()
-                    )
+                    # success = (
+                    #     info["success"]
+                    #     if "success" in info
+                    #     else info["truncation"].float().mean().item()
+                    # )
                     train_metrics.update(
                         episode_reward=torch.tensor(
                             [td["reward"] for td in self._tds[1:]]
                         ).sum(),
-                        episode_success=success,
+                        episode_success=info["success"],
                     )
                     train_metrics.update(self.common_metrics())
                     self.logger.log(train_metrics, "train")
