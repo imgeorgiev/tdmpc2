@@ -3,6 +3,7 @@ from time import time
 import numpy as np
 import torch
 from tensordict.tensordict import TensorDict
+import torch
 
 from trainer.base import Trainer
 
@@ -38,8 +39,13 @@ class OnlineTrainer(Trainer):
                 t += 1
                 if self.cfg.save_video:
                     self.logger.video.record(self.env)
-            ep_rewards.append(ep_reward)
-            ep_successes.append(info["success"])
+            ep_rewards.append(ep_reward.cpu().numpy())
+            success = (
+                info["success"]
+                if "success" in info
+                else info["truncation"].float().mean().item()
+            )
+            ep_successes.append(success)
             if self.cfg.save_video:
                 self.logger.video.save(self._step)
         return dict(
@@ -52,11 +58,11 @@ class OnlineTrainer(Trainer):
         if isinstance(obs, dict):
             obs = TensorDict(obs, batch_size=(), device="cpu")
         else:
-            obs = obs.unsqueeze(0).cpu()
+            obs = obs.unsqueeze(0)
         if action is None:
             action = torch.full_like(self.env.rand_act(), float("nan"))
         if reward is None:
-            reward = torch.tensor(float("nan"))
+            reward = torch.tensor([float("nan")]).to("cuda")
         td = TensorDict(
             dict(
                 obs=obs,
@@ -85,11 +91,16 @@ class OnlineTrainer(Trainer):
                     eval_next = False
 
                 if self._step > 0:
+                    success = (
+                        info["success"]
+                        if "success" in info
+                        else info["truncation"].float().mean().item()
+                    )
                     train_metrics.update(
                         episode_reward=torch.tensor(
                             [td["reward"] for td in self._tds[1:]]
                         ).sum(),
-                        episode_success=info["success"],
+                        episode_success=success,
                     )
                     train_metrics.update(self.common_metrics())
                     self.logger.log(train_metrics, "train")

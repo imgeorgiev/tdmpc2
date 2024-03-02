@@ -110,7 +110,7 @@ class TDMPC2:
             a = self.plan(z, t0=t0, eval_mode=eval_mode, task=task)
         else:
             a = self.model.pi(z, task)[int(not eval_mode)][0]
-        return a.cpu()
+        return a
 
     @torch.no_grad()
     def _estimate_value(self, z, actions, task):
@@ -286,6 +286,14 @@ class TDMPC2:
                 dict: Dictionary of training statistics.
         """
         obs, action, reward, task = buffer.sample()
+
+        # Convert vectorized env data to batched data
+        if obs.dim == 4:
+			obs = obs.flatten(1, 2)
+			action = action.flatten(1, 2)
+			reward = reward.flatten(1, 2)
+			if self.cfg.multitask:
+				task = task.flatten(1, 2)
 
         # Compute targets
         with torch.no_grad():

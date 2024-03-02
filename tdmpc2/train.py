@@ -1,4 +1,4 @@
-import os
+import os, sys
 
 os.environ["MUJOCO_GL"] = "egl"
 os.environ["LAZY_LEGACY_OP"] = "0"
@@ -18,6 +18,10 @@ from tdmpc2 import TDMPC2
 from trainer.offline_trainer import OfflineTrainer
 from trainer.online_trainer import OnlineTrainer
 from common.logger import Logger
+
+from IPython.core import ultratb
+
+sys.excepthook = ultratb.FormattedTB(mode="Plain", color_scheme="Neutral", call_pdb=1)
 
 torch.backends.cudnn.benchmark = True
 
