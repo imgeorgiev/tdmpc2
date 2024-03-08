@@ -70,7 +70,7 @@ class SuccessWrapper(dm_env.Environment):
 
     def step(self, action):
         obs, act, rew, info = self._env.step(action)
-        info["success"] = info["truncation"].float().mean().item()
+        info["success"] = info["truncation"]
 
         return obs, act, rew, info
 

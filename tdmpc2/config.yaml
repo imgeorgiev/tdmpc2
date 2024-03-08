@@ -9,7 +9,7 @@ env:
   _target_: dflex.envs.AntEnv
   render: False
   device: "cuda"
-  num_envs: 1
+  num_envs: 32
   stochastic_init: True
   no_grad: True
   episode_length: 1000
@@ -23,7 +23,9 @@ eval_freq: 50000
 
 # training
 steps: 10_000_000
-batch_size: 256
+batch_size: 8192 # default 256. Mine: num_envs * 16
+train_freq: 32
+num_updates: 1
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
@@ -35,7 +37,7 @@ tau: 0.01
 discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
-buffer_size: 1_000_000
+buffer_size: 1_000_000 # minimum must be 1000 x num_envs
 exp_name: default
 data_dir: ???
 
@@ -76,7 +78,7 @@ simnorm_dim: 8
 wandb_project: fowm
 wandb_entity: imgeorgiev
 wandb_silent: false
-disable_wandb: true
+disable_wandb: false
 save_csv: true
 
 # misc
