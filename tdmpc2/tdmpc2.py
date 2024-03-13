@@ -237,7 +237,7 @@ class TDMPC2:
         """
         self.pi_optim.zero_grad(set_to_none=True)
         self.model.track_q_grad(False)
-        _, pis, log_pis, _ = self.model.pi(zs, task)
+        _, pis, log_pis, log_stds = self.model.pi(zs, task)
         qs = self.model.Q(zs, pis, task, return_type="avg")
         self.scale.update(qs[0])
         qs = self.scale(qs)
@@ -252,7 +252,9 @@ class TDMPC2:
         self.pi_optim.step()
         self.model.track_q_grad(True)
 
-        return pi_loss.item()
+        pi_std = log_stds.detach().exp().mean()
+
+        return pi_loss.item(), pi_std.item()
 
     @torch.no_grad()
     def _td_target(self, next_z, reward, task):
@@ -353,7 +355,7 @@ class TDMPC2:
         self.optim.step()
 
         # Update policy
-        pi_loss = self.update_pi(zs.detach(), task)
+        pi_loss, pi_std = self.update_pi(zs.detach(), task)
 
         # Update target Q-functions
         self.model.soft_update_target_Q()
@@ -368,4 +370,5 @@ class TDMPC2:
             "total_loss": float(total_loss.mean().item()),
             "grad_norm": float(grad_norm),
             "pi_scale": float(self.scale.value),
+            "pi_std": float(pi_std),
         }

@@ -5,6 +5,7 @@ import torch
 from tensordict.tensordict import TensorDict
 import torch
 from tqdm import tqdm
+from common.logger import dict_mean
 
 from trainer.base import Trainer
 
@@ -119,7 +120,7 @@ class OnlineTrainer(Trainer):
                     self.logger.log(train_metrics, "train")
                     ep_rewards[done] = 0
                     for idx in done.nonzero(as_tuple=False):
-                        if len(self._tds[idx]) > self.cfg.horizon:
+                        if len(self._tds[idx]) > self.cfg.horizon + 1:
                             self._ep_idx = self.buffer.add(torch.cat(self._tds[idx]))
                         else:
                             print(f"WARN: Trajectory too short {len(self._tds[idx])}")
@@ -161,12 +162,13 @@ class OnlineTrainer(Trainer):
                     pretrained = True
                     print("Pretraining agent on seed data...")
 
+                metrics = []
                 for _ in range(num_updates):
-                    try:
-                        _train_metrics = self.agent.update(self.buffer)
-                        train_metrics.update(_train_metrics)
-                    except:
-                        print("Error: Training failure")
+                    _train_metrics = self.agent.update(self.buffer)
+                    metrics.append(_train_metrics)
+
+                if len(metrics) > 0:
+                    train_metrics.update(dict_mean(metrics))
 
             self._step += 1 * self.cfg.env.num_envs
 

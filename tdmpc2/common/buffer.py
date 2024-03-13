@@ -13,9 +13,7 @@ class Buffer:
     def __init__(self, cfg):
         self.cfg = cfg
         self._device = torch.device("cuda")
-        self._capacity = min(cfg.buffer_size, cfg.steps)
-        if "env" in cfg:
-            self._capacity = 1000 * cfg.env.num_envs  # last 5 episodes of number envs
+        self._capacity = cfg.buffer_size
         self._sampler = SliceSampler(
             num_slices=self.cfg.batch_size,
             end_key=None,
