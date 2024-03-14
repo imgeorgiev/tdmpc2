@@ -23,13 +23,12 @@ eval_freq: 50000
 
 # training
 steps: 10_000_000
-batch_size: 8192 # default 256. Mine: num_envs * 16
-train_freq: 32
-num_updates: 1
+seed_train_steps: 5000
+batch_size: 2048 # default 256. Mine: num_envs * 32
 reward_coef: 0.1
 value_coef: 0.1
 consistency_coef: 20
-rho: 0.5
+rho: 0.5 # weight of predicted next states for policy loss
 lr: 3e-4
 enc_lr_scale: 0.3
 grad_clip_norm: 20
@@ -53,8 +52,8 @@ max_std: 2
 temperature: 0.5
 
 # actor
-log_std_min: -10
-log_std_max: 2
+log_std_min: -5
+log_std_max: 0.5
 entropy_coef: 1e-4
 
 # critic
@@ -78,7 +77,7 @@ simnorm_dim: 8
 wandb_project: fowm
 wandb_entity: imgeorgiev
 wandb_silent: false
-disable_wandb: false
+disable_wandb: true
 save_csv: true
 
 # misc

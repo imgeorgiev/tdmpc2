@@ -3,8 +3,6 @@ from time import time
 import numpy as np
 import torch
 from tensordict.tensordict import TensorDict
-import torch
-from tqdm import tqdm
 from common.logger import dict_mean
 
 from trainer.base import Trainer
@@ -18,16 +16,20 @@ class OnlineTrainer(Trainer):
         self._step = 0
         self._ep_idx = 0
         self._start_time = time()
+        self._fps_time = None
 
     def common_metrics(self):
         """Return a dictionary of current metrics."""
         tot_time = time() - self._start_time
-        return dict(
+        d = dict(
             step=self._step,
             episode=self._ep_idx,
             total_time=tot_time,
-            fps=self._step // tot_time,
         )
+        if self._fps_time:
+            tot_time = time() - self._fps_time
+            d.update({"fps": self._step // tot_time})
+        return d
 
     @torch.no_grad()
     def eval(self):
@@ -70,9 +72,9 @@ class OnlineTrainer(Trainer):
         else:
             obs = obs.unsqueeze(0)
         if action is None:
-            action = torch.full_like(self.env.rand_act()[0].unsqueeze(0), float("nan"))
+            action = torch.full_like(self.env.rand_act()[0], float("nan"))
         if reward is None:
-            reward = torch.tensor([float("nan")]).to("cuda")
+            reward = torch.tensor(float("nan")).to("cuda")
         td = TensorDict(
             dict(
                 obs=obs,
@@ -85,31 +87,15 @@ class OnlineTrainer(Trainer):
 
     def train(self):
         """Train a TD-MPC2 agent."""
-        train_metrics, done, eval_next = (
-            {},
-            torch.tensor([True] * self.cfg.env.num_envs),
-            True,
-        )
+        train_metrics = {}
+        done = torch.tensor([True] * self.cfg.env.num_envs)
         pretrained = False
-        train_steps = self.cfg.env.num_envs * self.cfg.train_freq
-        last_train_step = 0
         ep_rewards = torch.zeros(self.cfg.env.num_envs, device="cuda")
-        self._tds = [None] * self.cfg.env.num_envs
         obs = self.env.reset()
+        self._tds = [None] * self.cfg.env.num_envs
 
         while self._step <= self.cfg.steps:
-
-            # Evaluate agent periodically
-            if self._step % self.cfg.eval_freq == 0:
-                eval_next = True
-
-            # Reset environment
             if done.any():
-                if eval_next:
-                    eval_metrics = self.eval()
-                    eval_metrics.update(self.common_metrics())
-                    self.logger.log(eval_metrics, "eval")
-                    eval_next = False
 
                 if self._step > 0:
                     train_metrics.update(
@@ -125,15 +111,15 @@ class OnlineTrainer(Trainer):
                         else:
                             print(f"WARN: Trajectory too short {len(self._tds[idx])}")
 
-                if "dflex" not in self.cfg.task:
-                    obs = self.env.reset()
+                # if "dflex" not in self.cfg.task:
+                #     obs = self.env.reset()
 
                 for idx in done.nonzero(as_tuple=False):
-                    with torch.no_grad():
-                        self._tds[idx] = [self.to_td(obs[idx])]
+                    self._tds[idx] = [self.to_td(obs[idx].squeeze())]
 
             # Collect experience
             if self._step > self.cfg.seed_steps:
+                # NOTE: planning doesn't work with vectorized envs
                 action = self.agent.act(obs, t0=done.any())
             else:
                 action = self.env.rand_act()
@@ -141,35 +127,35 @@ class OnlineTrainer(Trainer):
 
             with torch.no_grad():
                 ep_rewards += reward
+                # NOTE: this can be probably be done in a more efficient manner
                 for i, (o, a, r) in enumerate(zip(obs, action, reward)):
                     if done[i]:
                         o = info["obs_before_reset"][i]
-                    o = o.unsqueeze(0)
-                    a = a.unsqueeze(0)
-                    r = r.unsqueeze(0)
                     self._tds[i].append(self.to_td(o, a, r))
 
-            # Update agent
-            if self._step >= self.cfg.seed_steps and self._ep_idx > 0:
-                num_updates = 0
-
-                if self._step - last_train_step > train_steps:
-                    last_train_step = self._step
-                    num_updates = self.cfg.num_updates
-
-                if not pretrained:
-                    num_updates = self.cfg.seed_steps // self.cfg.env.num_envs
-                    pretrained = True
-                    print("Pretraining agent on seed data...")
-
+            # Once we are done seding, pretrain the agent
+            if self._step >= self.cfg.seed_steps and not pretrained:
+                print("Pretraining agent on seed data...")
                 metrics = []
-                for _ in range(num_updates):
+                for k in range(self.cfg.seed_train_steps):
+                    print(f"Update {k}/{self.cfg.seed_train_steps}", end="\r")
                     _train_metrics = self.agent.update(self.buffer)
                     metrics.append(_train_metrics)
 
-                if len(metrics) > 0:
-                    train_metrics.update(dict_mean(metrics))
+                train_metrics.update(dict_mean(metrics))
+                pretrained = True
+                self._fps_time = time()  # start tracking fps
+
+            # Once we are done pre-training, train the agent at every step
+            if pretrained:
+                _train_metrics = self.agent.update(self.buffer)
+                metrics.append(_train_metrics)
 
             self._step += 1 * self.cfg.env.num_envs
+
+        print("Evaluation")
+        eval_metrics = self.eval()
+        eval_metrics.update(self.common_metrics())
+        self.logger.log(eval_metrics, "eval")
 
         self.logger.finish(self.agent)

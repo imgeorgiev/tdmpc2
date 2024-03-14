@@ -287,7 +287,9 @@ class TDMPC2:
         Returns:
                 dict: Dictionary of training statistics.
         """
-        obs, action, reward, task = buffer.sample()
+
+        with torch.no_grad(): # NOTE: this shouldn't be necessary
+            obs, action, reward, task = buffer.sample()
 
         # Convert vectorized env data to batched data
         if obs.dim() == 4:

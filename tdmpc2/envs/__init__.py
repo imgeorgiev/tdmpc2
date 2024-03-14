@@ -95,5 +95,9 @@ def make_env(cfg):
         cfg.obs_shape = {cfg.get("obs", "state"): env.observation_space.shape}
     cfg.action_dim = env.action_space.shape[0]
     cfg.episode_length = env.max_episode_steps
-    cfg.seed_steps = max(1000, 5 * cfg.episode_length)
+    if "dflex" in cfg.task:
+        # 1000 timesteps per episode
+        cfg.seed_steps = 1000 * cfg.env.num_envs
+    else:
+        cfg.seed_steps = max(1000, 5 * cfg.episode_length)
     return env
