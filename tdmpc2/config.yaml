@@ -31,6 +31,7 @@ consistency_coef: 20
 rho: 0.5 # weight of predicted next states for policy loss
 lr: 3e-4
 enc_lr_scale: 0.3
+dec_lr_scale: 0.3
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
@@ -65,6 +66,8 @@ vmax: +10
 model_size: ???
 num_enc_layers: 2
 enc_dim: 256
+num_dec_layers: 2
+dec_dim: 256
 num_channels: 32
 mlp_dim: 512
 latent_dim: 512
@@ -75,7 +78,7 @@ simnorm_dim: 8
 
 # logging
 wandb_project: fowm
-wandb_entity: imgeorgiev
+wandb_entity: vgiridhar6
 wandb_silent: false
 disable_wandb: true
 save_csv: true

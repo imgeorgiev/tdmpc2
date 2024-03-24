@@ -177,3 +177,14 @@ def enc(cfg, out={}):
                 f"Encoder for observation type {k} not implemented."
             )
     return nn.ModuleDict(out)
+
+def dec(cfg):
+    """
+    Decoder for TD-MPC2.
+    """
+    return mlp(
+        cfg.latent_dim,
+        max(cfg.num_dec_layers - 1, 1) * [cfg.dec_dim],
+        cfg.obs_shape["state"][0],
+        # act=SimNorm(cfg), # @todo: activation not working
+    )
