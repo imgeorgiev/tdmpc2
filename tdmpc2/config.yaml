@@ -37,7 +37,7 @@ tau: 0.01
 discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
-buffer_size: 1_000_000 # minimum must be 1000 x num_envs
+buffer_size: 10_000_000 # minimum must be 1000 x num_envs
 exp_name: default
 data_dir: ???
 
@@ -80,7 +80,7 @@ simnorm_dim: 8
 wandb_project: fowm
 wandb_entity: vgiridhar6
 wandb_silent: false
-disable_wandb: true
+disable_wandb: false
 save_csv: true
 
 # misc

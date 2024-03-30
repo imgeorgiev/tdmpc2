@@ -28,11 +28,11 @@ class WorldModel(nn.Module):
         self._decoder = layers.dec(cfg)
 
         self._mlp = layers.mlp(
-            cfg.latent_dim + cfg.action_dim + cfg.task_dim,
+            cfg.latent_dim,
             2 * [cfg.mlp_dim],
             cfg.latent_dim,
             act=layers.SimNorm(cfg),
-        )
+        ) 
 
         self._dynamics = S4(
             d_model=512, # @todo, change to 520

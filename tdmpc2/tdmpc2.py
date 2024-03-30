@@ -24,11 +24,8 @@ class TDMPC2:
                     "params": self.model._encoder.parameters(),
                     "lr": self.cfg.lr * self.cfg.enc_lr_scale,
                 },
-                {
-                    "params": self.model._decoder.parameters(),
-                    "lr": self.cfg.lr * self.cfg.dec_lr_scale,
-                },
                 {"params": self.model._dynamics.parameters()},
+                {"params": self.model._mlp.parameters()},
                 {"params": self.model._reward.parameters()},
                 {"params": self.model._Qs.parameters()},
                 {
@@ -326,7 +323,6 @@ class TDMPC2:
         #     z = self.model.next(z, action[t], task)
         #     consistency_loss += F.mse_loss(z, next_z[t]) * self.cfg.rho**t
         #     zs[t + 1] = z
-                
         # Compute targets
         with torch.no_grad():
             zs = self.model.encode(obs, task)
@@ -339,15 +335,18 @@ class TDMPC2:
         # Encode history by S4 block
         hs, s_T = self.model._dynamics(dynamics_input[:1])
 
-        # Decode latents
-        decoder_input = torch.cat([dynamics_input, hs], dim=0)
-        decoder_input = decoder_input.permute(2, 0, 1)
-        xs = self.model.decode(decoder_input, task)
+        # # Decode latents
+        # decoder_input = torch.cat([dynamics_input, hs], dim=0)
+        # decoder_input = decoder_input.permute(2, 0, 1)
+        # mlp_input = hs.permute(1, 0, 2)
+        mlp_input = hs.permute(2, 0, 1)
+        zs_hat = self.model._mlp(mlp_input)
 
+        # 
         # Compute loss between decoded and original observations
         consistency_loss = 0
         for t in range(self.cfg.horizon):
-            consistency_loss += F.mse_loss(xs[t][-1], obs[t]) * self.cfg.rho**t
+            consistency_loss += F.mse_loss(zs_hat[t][-1], zs[t]) * self.cfg.rho**t
         # Predictions
         _zs = zs[:-1]
         qs = self.model.Q(_zs, action, task, return_type="all")
