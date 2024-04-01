@@ -32,6 +32,7 @@ rho: 0.5 # weight of predicted next states for policy loss
 lr: 3e-4
 enc_lr_scale: 0.3
 dec_lr_scale: 0.3
+dynamics_lr: 1e-3
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
