@@ -328,9 +328,10 @@ class TDMPC2:
         #     zs[t + 1] = z
         # Compute targets
         with torch.no_grad():
-            zs = self.model.encode(obs, task)
             next_z = self.model.encode(obs[1:], task)
             td_targets = self._td_target(next_z, reward, task)
+
+        zs = self.model.encode(obs, task)
         
         dynamics_input = zs[:-1]
         
@@ -344,7 +345,8 @@ class TDMPC2:
 
         consistency_loss = 0
         for t in range(self.cfg.horizon):
-            consistency_loss += F.mse_loss(zs_hat[t], zs[t+1]) * self.cfg.rho**t
+            consistency_loss += F.mse_loss(zs_hat[t], next_z[t]) * self.cfg.rho**t
+
         # Predictions
         _zs = zs[:-1]
         qs = self.model.Q(_zs, action, task, return_type="all")
