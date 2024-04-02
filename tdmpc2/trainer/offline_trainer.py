@@ -47,12 +47,33 @@ class OfflineTrainer(Trainer):
             )
         return results
 
+    def eval1(self):
+        """Evaluate a TD-MPC2 agent on a single env."""
+        results = dict()
+        ep_rewards, ep_successes = [], []
+        for _ in range(self.cfg.eval_episodes):
+            obs, done, ep_reward, t = self.env.reset(), torch.tensor([False]), 0, 0
+            while not torch.all(done):
+                action = self.agent.act(obs, t0=t == 0, eval_mode=True, task=None)
+                obs, reward, done, info = self.env.step(action)
+                ep_reward += reward.item()
+                t += 1
+            ep_rewards.append(ep_reward)
+            ep_successes.append(info["success"].item())
+        results.update(
+            {
+                f"episode_reward": np.nanmean(ep_rewards),
+                f"episode_success": np.nanmean(ep_successes),
+            }
+        )
+        return results
+
     def train(self):
         """Train a TD-MPC2 agent."""
-        assert self.cfg.multitask and self.cfg.task in {
-            "mt30",
-            "mt80",
-        }, "Offline training only supports multitask training with mt30 or mt80 task sets."
+        # assert self.cfg.multitask and self.cfg.task in {
+        #     "mt30",
+        #     "mt80",
+        # }, "Offline training only supports multitask training with mt30 or mt80 task sets."
 
         # Load data
         assert self.cfg.task in self.cfg.data_dir, (
@@ -67,39 +88,44 @@ class OfflineTrainer(Trainer):
         # Create buffer for sampling
         _cfg = deepcopy(self.cfg)
         _cfg.episode_length = 101 if self.cfg.task == "mt80" else 501
-        _cfg.buffer_size = 550_450_000 if self.cfg.task == "mt80" else 345_690_000
+        # _cfg.buffer_size = 550_450_000 if self.cfg.task == "mt80" else 345_690_000
+        _cfg.buffer_size = len(fps) * 32_768 * _cfg.episode_length
         _cfg.steps = _cfg.buffer_size
         self.buffer = Buffer(_cfg)
+        # fps = fps[:3]
         for fp in tqdm(fps, desc="Loading data"):
-            td = torch.load(fp)
+            td = torch.load(fp).to("cpu")
             assert td.shape[1] == _cfg.episode_length, (
                 f"Expected episode length {td.shape[1]} to match config episode length {_cfg.episode_length}, "
                 f"please double-check your config."
             )
             for i in range(len(td)):
+                print(f"Episode {i}/{len(td)}", end="\r")
                 self.buffer.add(td[i])
-        assert (
-            self.buffer.num_eps == self.buffer.capacity
-        ), f"Buffer has {self.buffer.num_eps} episodes, expected {self.buffer.capacity} episodes."
+        # assert (
+        #     self.buffer.num_eps == self.buffer.capacity
+        # ), f"Buffer has {self.buffer.num_eps} episodes, expected {self.buffer.capacity} episodes."
 
         print(f"Training agent for {self.cfg.steps} iterations...")
         metrics = {}
         for i in range(self.cfg.steps):
+            print(f"Step {i}/{self.cfg.steps}", end="\r")
 
             # Update agent
             train_metrics = self.agent.update(self.buffer)
 
             # Evaluate agent periodically
-            if i % self.cfg.eval_freq == 0 or i % 10_000 == 0:
+            if i % self.cfg.eval_freq == 0 or i % 50 == 0:
                 metrics = {
                     "iteration": i,
                     "total_time": time() - self._start_time,
                 }
                 metrics.update(train_metrics)
                 if i % self.cfg.eval_freq == 0:
-                    metrics.update(self.eval())
-                    self.logger.pprint_multitask(metrics, self.cfg)
+                    metrics.update(self.eval1())
+                    # self.logger.pprint_multitask(metrics, self.cfg)
                     if i > 0:
+                        print("saving agent")
                         self.logger.save_agent(self.agent, identifier=f"{i}")
                 self.logger.log(metrics, "pretrain")
 
