@@ -331,6 +331,9 @@ class TDMPC2:
             next_z = self.model.encode(obs[1:], task)
             td_targets = self._td_target(next_z, reward, task)
 
+        self.optim.zero_grad(set_to_none=True)
+        self.model.train()
+
         zs = self.model.encode(obs, task)
         
         dynamics_input = zs[:-1]
