@@ -303,30 +303,6 @@ class TDMPC2:
             if self.cfg.multitask:
                 task = task.flatten(1, 2)
 
-        # # Compute targets
-        # with torch.no_grad():
-        #     next_z = self.model.encode(obs[1:], task)
-        #     td_targets = self._td_target(next_z, reward, task)
-
-        # # Prepare for update
-        # self.optim.zero_grad(set_to_none=True)
-        # self.model.train()
-
-        # # Latent rollout
-        # zs = torch.empty(
-        #     self.cfg.horizon + 1,
-        #     self.cfg.batch_size,
-        #     self.cfg.latent_dim,
-        #     device=self.device,
-        # )
-        # z = self.model.encode(obs[0], task)
-        # zs[0] = z
-        # consistency_loss = 0
-        # for t in range(self.cfg.horizon):
-        #     z = self.model.next(z, action[t], task)
-        #     consistency_loss += F.mse_loss(z, next_z[t]) * self.cfg.rho**t
-        #     zs[t + 1] = z
-        # Compute targets
         with torch.no_grad():
             next_z = self.model.encode(obs[1:], task)
             td_targets = self._td_target(next_z, reward, task)
