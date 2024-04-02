@@ -32,13 +32,13 @@ rho: 0.5 # weight of predicted next states for policy loss
 lr: 3e-4
 enc_lr_scale: 0.3
 dec_lr_scale: 0.3
-dynamics_lr: 1e-3
+dynamics_lr: 3e-4
 grad_clip_norm: 20
 tau: 0.01
 discount_denom: 5
 discount_min: 0.95
 discount_max: 0.995
-buffer_size: 10_000_000 # minimum must be 1000 x num_envs
+buffer_size: 1_000_000 # minimum must be 1000 x num_envs
 exp_name: default
 data_dir: ???
 
@@ -82,7 +82,7 @@ wandb_project: fowm
 wandb_entity: vgiridhar6
 wandb_silent: false
 disable_wandb: false
-save_csv: true
+save_csv: false
 
 # misc
 save_video: false
