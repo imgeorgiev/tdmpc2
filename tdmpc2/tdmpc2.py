@@ -310,7 +310,15 @@ class TDMPC2:
         self.optim.zero_grad(set_to_none=True)
         self.model.train()
 
+        zs_hat = torch.empty(
+            self.cfg.horizon + 1,
+            self.cfg.batch_size,
+            self.cfg.latent_dim,
+            device=self.device,
+        )
+
         zs = self.model.encode(obs, task)
+        zs_hat[0] = zs[0]
         
         dynamics_input = zs[:-1]
         
@@ -320,14 +328,14 @@ class TDMPC2:
         hs, s_T = self.model._dynamics(dynamics_input)
 
         mlp_input = hs.permute(2, 0, 1)
-        zs_hat = self.model._mlp(mlp_input)
+        zs_hat[1:] = self.model._mlp(mlp_input)
 
-        consistency_loss = 0
-        for t in range(self.cfg.horizon):
-            consistency_loss += F.mse_loss(zs_hat[t], next_z[t]) * self.cfg.rho**t
+        consistency_loss = (zs_hat[1:] - next_z)**2 * torch.tensor([self.cfg.rho**t for t in range(self.cfg.horizon)], device=self.device).view(-1, 1, 1)
+        consistency_loss = consistency_loss.mean()
+
 
         # Predictions
-        _zs = zs[:-1]
+        _zs = zs_hat[:-1]
         qs = self.model.Q(_zs, action, task, return_type="all")
         reward_preds = self.model.reward(_zs, action, task)
 
@@ -360,7 +368,7 @@ class TDMPC2:
         self.optim.step()
 
         # Update policy
-        pi_loss, pi_std = self.update_pi(zs.detach(), task)
+        pi_loss, pi_std = self.update_pi(zs_hat.detach(), task)
 
         # Update target Q-functions
         self.model.soft_update_target_Q()
