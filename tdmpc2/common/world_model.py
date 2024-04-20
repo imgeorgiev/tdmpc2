@@ -6,8 +6,8 @@ import torch.nn as nn
 
 from common import layers, math, init
 
-import sys
-sys.path.append('../../s4/')
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 's4'))
 from models.s4.s4 import LinearActivation, S4Block as S4
 
 class WorldModel(nn.Module):
