@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn.functional as F
+import time
 
 from common import math
 from common.scale import RunningScale
@@ -307,10 +308,22 @@ class TDMPC2:
             next_z = self.model.encode(obs[1:], task)
             td_targets = self._td_target(next_z, reward, task)
 
+        model_walltime = time.process_time()
+        train_walltime = time.process_time()
         self.optim.zero_grad(set_to_none=True)
         self.model.train()
+        train_walltime = time.process_time() - train_walltime
+        dynamics_walltime = time.process_time()
+
+        zs_hat = torch.empty(
+            self.cfg.horizon + 1,
+            self.cfg.batch_size,
+            self.cfg.latent_dim,
+            device=self.device,
+        )
 
         zs = self.model.encode(obs, task)
+        zs_hat[0] = zs[0]
         
         dynamics_input = zs[:-1]
         
@@ -320,16 +333,20 @@ class TDMPC2:
         hs, s_T = self.model._dynamics(dynamics_input)
 
         mlp_input = hs.permute(2, 0, 1)
-        zs_hat = self.model._mlp(mlp_input)
+        zs_hat[1:] = self.model._mlp(mlp_input)
+        dynamics_walltime = time.process_time() - dynamics_walltime
 
-        consistency_loss = 0
-        for t in range(self.cfg.horizon):
-            consistency_loss += F.mse_loss(zs_hat[t], next_z[t]) * self.cfg.rho**t
+        consistency_loss_walltime = time.process_time()
+        consistency_loss = (zs_hat[1:] - next_z)**2 * torch.tensor([self.cfg.rho**t for t in range(self.cfg.horizon)], device=self.device).view(-1, 1, 1)
+        consistency_loss = consistency_loss.mean()
+        consistency_loss_walltime = time.process_time() - consistency_loss_walltime
 
         # Predictions
-        _zs = zs[:-1]
+        prediction_walltime = time.process_time()
+        _zs = zs_hat[:-1]
         qs = self.model.Q(_zs, action, task, return_type="all")
         reward_preds = self.model.reward(_zs, action, task)
+        prediction_walltime = time.process_time() - prediction_walltime
 
         # Compute losses
         reward_loss, value_loss = 0, 0
@@ -353,20 +370,47 @@ class TDMPC2:
         )
 
         # Update model
+        update_model_walltime = time.process_time()
         total_loss.backward()
         grad_norm = torch.nn.utils.clip_grad_norm_(
             self.model.parameters(), self.cfg.grad_clip_norm
         )
         self.optim.step()
+        update_model_walltime = time.process_time() - update_model_walltime
 
         # Update policy
-        pi_loss, pi_std = self.update_pi(zs.detach(), task)
+        update_policy_walltime = time.process_time()
+        pi_loss, pi_std = self.update_pi(zs_hat.detach(), task)
+        update_policy_walltime = time.process_time() - update_policy_walltime
 
         # Update target Q-functions
+        update_qfunc_walltime = time.process_time()
         self.model.soft_update_target_Q()
+        model_walltime = time.process_time() - model_walltime
+        update_qfunc_walltime = time.process_time() - update_qfunc_walltime
 
         # Return training statistics
         self.model.eval()
+
+        if self.cfg.experimental:
+            return {
+                "consistency_loss": float(consistency_loss.mean().item()),
+                "reward_loss": float(reward_loss.mean().item()),
+                "value_loss": float(value_loss.mean().item()),
+                "pi_loss": pi_loss,
+                "total_loss": float(total_loss.mean().item()),
+                "grad_norm": float(grad_norm),
+                "pi_scale": float(self.scale.value),
+                "pi_std": float(pi_std),
+                "dynamics_walltime": dynamics_walltime,
+                "model_walltime": model_walltime,
+                "train_walltime": train_walltime,
+                "update_model_walltime": update_model_walltime,
+                "update_policy_walltime": update_policy_walltime,
+                "update_qfunc_walltime": update_qfunc_walltime,
+                "prediction_walltime": prediction_walltime,
+            }
+    
         return {
             "consistency_loss": float(consistency_loss.mean().item()),
             "reward_loss": float(reward_loss.mean().item()),

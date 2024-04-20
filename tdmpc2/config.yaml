@@ -79,10 +79,11 @@ simnorm_dim: 8
 
 # logging
 wandb_project: fowm
-wandb_entity: vgiridhar6
+wandb_entity: pair-diffusion
 wandb_silent: false
 disable_wandb: false
 save_csv: false
+experimental: true
 
 # misc
 save_video: false
