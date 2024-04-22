@@ -6,6 +6,9 @@ import torch.nn as nn
 
 from common import layers, math, init
 
+import os, sys
+sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..', '..', 's4'))
+from models.s4.s4 import LinearActivation, S4Block as S4
 
 class WorldModel(nn.Module):
     """
@@ -22,12 +25,22 @@ class WorldModel(nn.Module):
             for i in range(len(cfg.tasks)):
                 self._action_masks[i, : cfg.action_dims[i]] = 1.0
         self._encoder = layers.enc(cfg)
-        self._dynamics = layers.mlp(
-            cfg.latent_dim + cfg.action_dim + cfg.task_dim,
+
+        self._mlp = layers.mlp(
+            cfg.latent_dim + cfg.action_dim,
             2 * [cfg.mlp_dim],
             cfg.latent_dim,
             act=layers.SimNorm(cfg),
+        ) 
+
+        self._dynamics = S4(
+            d_model=520,
+            d_state=520,
+            bidirectional=False,
+            dropout=False,
+            transposed=True,
         )
+
         self._reward = layers.mlp(
             cfg.latent_dim + cfg.action_dim + cfg.task_dim,
             2 * [cfg.mlp_dim],
@@ -121,15 +134,15 @@ class WorldModel(nn.Module):
         if self.cfg.obs == "rgb" and obs.ndim == 5:
             return torch.stack([self._encoder[self.cfg.obs](o) for o in obs])
         return self._encoder[self.cfg.obs](obs)
-
-    def next(self, z, a, task):
+    
+    def decode(self, h, task):
         """
-        Predicts the next latent state given the current latent state and action.
+        Decodes a latent representation into an observation.
         """
         if self.cfg.multitask:
-            z = self.task_emb(z, task)
-        z = torch.cat([z, a], dim=-1)
-        return self._dynamics(z)
+            h = self.task_emb(h, task)
+        # create random tensor with shape (4, 2048, 512) for testing
+        return self._decoder(h)
 
     def reward(self, z, a, task):
         """

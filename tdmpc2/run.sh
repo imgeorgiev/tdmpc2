@@ -7,9 +7,11 @@
 #SBATCH -q embers                               # QOS Name
 #SBATCH -oReport-%j.out                         # Combined output and error messages file
 #SBATCH --output=slurm_out/Report-%A.out
+#SBATCH --mail-type=BEGIN,END,FAIL
+#SBATCH --mail-user=vgiridhar6@gatech.edu        # E-mail address for notifications
 
 module load anaconda3/2022.05.0.1               # Load module dependencies
-conda activate fowm
+conda activate fowm-s4
 
 echo "Running the following command:"
 echo $@
