@@ -368,7 +368,18 @@ class TDMPC2:
         self.optim.step()
 
         # Update policy
-        pi_loss, pi_std = self.update_pi(zs_hat.detach(), task)
+
+        # Convert (L, B, H) -> (_, 3, B, H) (mini batches) for pi update
+        n = zs_hat.size(0) // self.config.pi_update_horizon
+        rem = zs_hat.size(0) % self.config.pi_update_horizon
+
+        zs_hat_minibatch = zs_hat
+        if (rem != 0): zs_hat_minibatch = zs_hat[:-rem]
+        zs_hat_minibatch = zs_hat_minibatch.view(n, 3, self.cfg.batch_size, self.cfg.latent_dim)
+        pi_loss = 0
+        pi_std = 0
+        for i in range(n):
+            pi_loss, pi_std = self.update_pi(zs_hat_minibatch[i].detach(), task)
 
         # Update target Q-functions
         self.model.soft_update_target_Q()
