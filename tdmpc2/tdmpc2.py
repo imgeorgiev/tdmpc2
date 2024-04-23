@@ -322,13 +322,6 @@ class TDMPC2:
             device=self.device,
         )
 
-        zs_hat = torch.empty(
-            self.cfg.horizon + 1,
-            self.cfg.batch_size,
-            self.cfg.latent_dim,
-            device=self.device,
-        )
-
         zs = self.model.encode(obs, task)
         zs_hat[0] = zs[0]
         
@@ -341,12 +334,15 @@ class TDMPC2:
 
         mlp_input = hs.permute(2, 0, 1)
         zs_hat[1:] = self.model._mlp(mlp_input)
+        dynamics_walltime = time.process_time() - dynamics_walltime
 
+        consistency_loss_walltime = time.process_time()
         consistency_loss = (zs_hat[1:] - next_z)**2 * torch.tensor([self.cfg.rho**t for t in range(self.cfg.horizon)], device=self.device).view(-1, 1, 1)
         consistency_loss = consistency_loss.mean()
-
+        consistency_loss_walltime = time.process_time() - consistency_loss_walltime
 
         # Predictions
+        prediction_walltime = time.process_time()
         _zs = zs_hat[:-1]
         qs = self.model.Q(_zs, action, task, return_type="all")
         reward_preds = self.model.reward(_zs, action, task)
@@ -387,8 +383,8 @@ class TDMPC2:
         pi_loss, pi_std = self.update_pi(zs_hat.detach(), task)
 
         # Convert (L, B, H) -> (_, 3, B, H) (mini batches) for pi update
-        n = zs_hat.size(0) // self.config.pi_update_horizon
-        rem = zs_hat.size(0) % self.config.pi_update_horizon
+        n = zs_hat.size(0) // self.cfg.update_pi_horizon
+        rem = zs_hat.size(0) % self.cfg.update_pi_horizon
 
         zs_hat_minibatch = zs_hat
         if (rem != 0): zs_hat_minibatch = zs_hat[:-rem]
