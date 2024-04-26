@@ -334,12 +334,10 @@ class TDMPC2:
 
         mlp_input = hs.permute(2, 0, 1)
         zs_hat[1:] = self.model._mlp(mlp_input)
-        dynamics_walltime = time.process_time() - dynamics_walltime
 
-        consistency_loss_walltime = time.process_time()
         consistency_loss = (zs_hat[1:] - next_z)**2 * torch.tensor([self.cfg.rho**t for t in range(self.cfg.horizon)], device=self.device).view(-1, 1, 1)
         consistency_loss = consistency_loss.mean()
-        consistency_loss_walltime = time.process_time() - consistency_loss_walltime
+        dynamics_walltime = time.process_time() - dynamics_walltime
 
         # Predictions
         prediction_walltime = time.process_time()
