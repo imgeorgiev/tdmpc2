@@ -18,6 +18,8 @@ class TDMPC2:
         self.cfg = cfg
         self.device = torch.device("cuda")
         self.model = WorldModel(cfg).to(self.device)
+        if (cfg.supervised_model_dir):
+            self.load_supervised_model(cfg.model_dir)                  
         self.optim = torch.optim.Adam(
             [
                 {
@@ -78,6 +80,16 @@ class TDMPC2:
         """
         torch.save({"model": self.model.state_dict()}, fp)
 
+    def save_policy(self, pi_fp, qfunc_fp):
+        """
+        Save policy state dict of the agent to filepath.
+
+        Args:
+                fp (str): Filepath to save state dict to.
+        """
+        torch.save(self.model._pi.state_dict(), pi_fp)
+        torch.save(self.model._Qs.state_dict(), qfunc_fp)
+
     def load(self, fp):
         """
         Load a saved state dict from filepath (or dictionary) into current agent.
@@ -87,6 +99,15 @@ class TDMPC2:
         """
         state_dict = fp if isinstance(fp, dict) else torch.load(fp)
         self.model.load_state_dict(state_dict["model"])
+    
+    def load_supervised_model(self, fp):
+        state_dict = fp if isinstance(fp, dict) else torch.load(fp)
+        
+        # load keys related to encoder, dynamics, reward, into self.model, and ignore the rest
+        keys_to_load = ['_encoder.state.0.weight', '_encoder.state.0.bias', '_encoder.state.0.ln.weight', '_encoder.state.0.ln.bias', '_encoder.state.1.weight', '_encoder.state.1.bias', '_encoder.state.1.ln.weight', '_encoder.state.1.ln.bias', '_dynamics.0.weight', '_dynamics.0.bias', '_dynamics.0.ln.weight', '_dynamics.0.ln.bias', '_dynamics.1.weight', '_dynamics.1.bias', '_dynamics.1.ln.weight', '_dynamics.1.ln.bias', '_dynamics.2.weight', '_dynamics.2.bias', '_reward.0.weight', '_reward.0.bias', '_reward.0.ln.weight', '_reward.0.ln.bias', '_reward.1.weight', '_reward.1.bias', '_reward.1.ln.weight', '_reward.1.ln.bias', '_reward.2.weight', '_reward.2.bias']
+        for key in state_dict["model"]:
+            if key in keys_to_load:
+                self.model.state_dict()[key].copy_(state_dict["model"][key])
 
     @torch.no_grad()
     def act(self, obs, t0=False, eval_mode=False, task=None):
@@ -298,6 +319,9 @@ class TDMPC2:
             reward = reward.flatten(1, 2)
             if self.cfg.multitask:
                 task = task.flatten(1, 2)
+        # account for padding in DMControl dataset
+        obs = obs[:, :, :self.cfg.obs_shape["state"][0]]
+        action = action[:, :, :self.cfg.action_dim] 
 
         # Compute targets
         with torch.no_grad():
@@ -317,10 +341,8 @@ class TDMPC2:
         )
         z = self.model.encode(obs[0], task)
         zs[0] = z
-        consistency_loss = 0
         for t in range(self.cfg.horizon):
             z = self.model.next(z, action[t], task)
-            consistency_loss += F.mse_loss(z, next_z[t]) * self.cfg.rho**t
             zs[t + 1] = z
 
         # Predictions
@@ -331,21 +353,13 @@ class TDMPC2:
         # Compute losses
         reward_loss, value_loss = 0, 0
         for t in range(self.cfg.horizon):
-            reward_loss += (
-                math.soft_ce(reward_preds[t], reward[t], self.cfg).mean()
-                * self.cfg.rho**t
-            )
             for q in range(self.cfg.num_q):
                 value_loss += (
                     math.soft_ce(qs[q][t], td_targets[t], self.cfg).mean()
                     * self.cfg.rho**t
                 )
-        consistency_loss *= 1 / self.cfg.horizon
-        reward_loss *= 1 / self.cfg.horizon
         value_loss *= 1 / (self.cfg.horizon * self.cfg.num_q)
         total_loss = (
-            self.cfg.consistency_coef * consistency_loss
-            + self.cfg.reward_coef * reward_loss
             + self.cfg.value_coef * value_loss
         )
 
@@ -365,8 +379,6 @@ class TDMPC2:
         # Return training statistics
         self.model.eval()
         return {
-            "consistency_loss": float(consistency_loss.mean().item()),
-            "reward_loss": float(reward_loss.mean().item()),
             "value_loss": float(value_loss.mean().item()),
             "pi_loss": pi_loss,
             "total_loss": float(total_loss.mean().item()),

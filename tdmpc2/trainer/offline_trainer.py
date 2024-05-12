@@ -9,6 +9,7 @@ import torch
 from tqdm import tqdm
 
 from common.buffer import Buffer
+from common import TASK_SET
 from trainer.base import Trainer
 
 
@@ -53,13 +54,13 @@ class OfflineTrainer(Trainer):
         ep_rewards, ep_successes = [], []
         for _ in range(self.cfg.eval_episodes):
             obs, done, ep_reward, t = self.env.reset(), torch.tensor([False]), 0, 0
-            while not torch.all(done):
+            while not done:
                 action = self.agent.act(obs, t0=t == 0, eval_mode=True, task=None)
-                obs, reward, done, info = self.env.step(action)
+                obs, reward, done, info = self.env.step(action.cpu())
                 ep_reward += reward.item()
                 t += 1
             ep_rewards.append(ep_reward)
-            ep_successes.append(info["success"].item())
+            ep_successes.append(info["success"])
         results.update(
             {
                 f"episode_reward": np.nanmean(ep_rewards),
@@ -76,10 +77,10 @@ class OfflineTrainer(Trainer):
         # }, "Offline training only supports multitask training with mt30 or mt80 task sets."
 
         # Load data
-        assert self.cfg.task in self.cfg.data_dir, (
-            f"Expected data directory {self.cfg.data_dir} to contain {self.cfg.task}, "
-            f"please double-check your config."
-        )
+        # assert self.cfg.task in self.cfg.data_dir, (
+        #     f"Expected data directory {self.cfg.data_dir} to contain {self.cfg.task}, "
+        #     f"please double-check your config."
+        # )
         fp = Path(os.path.join(self.cfg.data_dir, "*.pt"))
         fps = sorted(glob(str(fp)))
         assert len(fps) > 0, f"No data found at {fp}"
@@ -94,14 +95,23 @@ class OfflineTrainer(Trainer):
         self.buffer = Buffer(_cfg)
         # fps = fps[:3]
         for fp in tqdm(fps, desc="Loading data"):
-            td = torch.load(fp).to("cpu")
+            td = torch.load(fp).to("cuda")
+            # convert td to tensor dict
+            # filter out the tasks that are not 17 and save as torch tensor
             assert td.shape[1] == _cfg.episode_length, (
                 f"Expected episode length {td.shape[1]} to match config episode length {_cfg.episode_length}, "
                 f"please double-check your config."
             )
-            for i in range(len(td)):
-                print(f"Episode {i}/{len(td)}", end="\r")
+            # find all td indices where all tasks are 17 @todo, change to use variable task_id
+            task_idxs = torch.where(torch.all(td["task"] == 17, dim=1))[0]
+            print("number of episodes with task 17 (hopper-stand):", len(task_idxs))
+            num_episodes = 0
+            for i in task_idxs:
+                if (num_episodes == 1000):
+                    break
+                print(f"Episode {num_episodes}/{len(task_idxs)}", end="\r")
                 self.buffer.add(td[i])
+                num_episodes += 1
         # assert (
         #     self.buffer.num_eps == self.buffer.capacity
         # ), f"Buffer has {self.buffer.num_eps} episodes, expected {self.buffer.capacity} episodes."
@@ -128,5 +138,9 @@ class OfflineTrainer(Trainer):
                         print("saving agent")
                         self.logger.save_agent(self.agent, identifier=f"{i}")
                 self.logger.log(metrics, "pretrain")
+
+                if i % self.cfg.save_policy_freq == 0:
+                    print("saving policy")
+                    self.logger.save_policy(self.agent, identifier=f"{i}")
 
         self.logger.finish(self.agent)

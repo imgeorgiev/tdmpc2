@@ -41,7 +41,7 @@ class Buffer:
             storage=storage,
             sampler=self._sampler,
             pin_memory=True,
-            prefetch=1,
+            prefetch=20, # speeds up training
             batch_size=self._batch_size,
         )
 
@@ -96,6 +96,27 @@ class Buffer:
             self._buffer = self._init(td)
         self._buffer.extend(td)
         self._num_eps += 1
+        return self._num_eps
+
+    def add_batch(self, td):
+        """Add a batch of episodes to the buffer."""
+        num_eps = td["reward"].shape[0]
+        ep_len = td["reward"].shape[1]
+        max_eps = self._capacity // ep_len
+        eps_that_fit = min(num_eps, max_eps)
+        print(f"Can fit {eps_that_fit} episodes into buffer")
+        td = td[torch.randint(0, num_eps, (eps_that_fit,))]
+        episodes = torch.ones_like(td["reward"], dtype=torch.int32) * torch.arange(
+            0, eps_that_fit, dtype=torch.int32
+        ).view((-1, 1)).to("cuda")
+        td["episode"] = episodes
+        if "term" not in td.keys():
+            td["term"] = torch.zeros_like(td["reward"], dtype=torch.bool)
+        td = td.flatten()  # faltten to easy ading
+        if self._num_eps == 0:
+            self._buffer = self._init(td[0 : ep_len + 1])
+        self._buffer.extend(td)
+        self._num_eps += num_eps
         return self._num_eps
 
     def sample(self):
